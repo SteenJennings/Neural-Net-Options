@@ -1,3 +1,7 @@
+# In this algorithm, we are importing a list of 'buy' dates from a github csv.
+# We will purchase call options on these dates and sell them with a simple
+# trailing stop-limit.
+# Resources - https://youtu.be/Lq-Ri7YU5fU
 class WellDressedBlackLemur(QCAlgorithm):
 
     def Initialize(self):
@@ -34,7 +38,7 @@ class WellDressedBlackLemur(QCAlgorithm):
         self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/QuantCSV/amd_predictions_05072021.csv"
         csv = self.Download(self.url)
         
-        # Schedule Buys
+        # Schedule Buys - https://www.quantconnect.com/docs/algorithm-reference/scheduled-events
         self.Schedule.On(self.DateRules.On(2020, 4, 13), \
                         self.TimeRules.At(9,31), \
                         self.BuySignal)
