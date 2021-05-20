@@ -1,134 +1,90 @@
-# In this algorithm, we are importing a list of 'buy' dates from a github csv.
-# We will purchase call options on these dates and sell them with a simple
-# trailing stop-limit.
+class WellDressedBlackLemur(QCAlgorithm):
 
-from datetime import timedelta
-from QuantConnect.Data.Custom.CBOE import * # get pricing data
-
-from io import StringIO
-import pandas as pd
-
-class UglyRedDog(QCAlgorithm):
-    
-    # Order ticket for our stop order, Datetime when stop order was last hit
-    stopMarketTicket = None
-    stopMarketOrderFillTime = datetime.min
-    highestContractPrice = 0
-
-    # At the very start of the algorithm we call Initialize() to set up our strategy.  This is important to set up
-    # here so it can be restarted easily.
     def Initialize(self):
-        self.SetStartDate(1999, 12, 13)  # backtest Start Date
-        self.SetEndDate(2021, 5, 7) # backtest End Date
-        self.SetCash(100000)  # Starting capital
+        self.SetStartDate(2020, 4, 13)  # Set Start Date
+        self.SetEndDate(2021, 4, 26) # Set End Date
+        self.SetCash(1000000)  # Set Strategy Cash
         
-        # Save security object then set data normalization mode for that object
-        # request minute data for AMD, note that this may affect when orders are filled.  For example, if you use
-        # daily data, the order will not fill until the next morning
-        self.equity = self.AddEquity("AMD", Resolution.Minute) 
+        #Equity Info Here
+        self.equity = self.AddEquity("TSLA", Resolution.Minute)
+        #Normalize data or calculations will be off
         self.equity.SetDataNormalizationMode(DataNormalizationMode.Raw)
         self.symbol = self.equity.Symbol
         
-        # In the future we could use Coarse Selection to help select equities
-        # self.AddUniverse(self.CoarseSelectionFilter)
-        
-        self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/QuantCSV/amd_predictions_05072021.csv"
-        csv = self.Download(self.url)
-        #df = pd.read_csv('csv')
-        
+        # Options Contracts
         # initialize the option contract with empty string
         self.contract = str()
-        # keep track of otpions contracts so we don't add contracts multiple times
+        # keep track of options contracts so we don't add the same contracts multiple times
         self.contractsAdded = set()
+        self.buyOptions = 0 # buy signal
         
-        self.DaysBeforeExp = 2 #days before we close the options
-        self.DTE = 40 #target contracts before expiration
-        self.OTM = 0.05 # target OTM %
-        self.percentage = 0.9 # percent of portfolio
+        # Buy/Sell Contract Criteria
+        self.DaysBeforeExp = 5 # days before we close the options
+        self.DTE = 60 # target contracts before expiration
+        self.OTM = 0.10 # target OTM %
+        self.percentage = 0.05 # percent of portfolio
+        self.contractAmounts = 10 # number of contracts to purchase
         
-        # this is a Momentum Percent Indicator
-        self.spyMomentum = self.MOMP("SPY", 50, Resolution.Daily)
-        
-        # This will hlep measure the impact of our algorithm.  SPY will act as our benchmark.
-        self.SetBenchmark("SPY")
-        
-        # Warm up algorithm for 50 days to populate the indicators prior to the start date - should be used in Initialize()
-        # if you warm up, be sure to set a conditional flag in the OnData function to ensure
-        # everything is ready (warmed up) prior to any other actions
-        self.SetWarmup(50)
-    
         # Schedule plotting function 30 minutes after every market open
         self.Schedule.On(self.DateRules.EveryDay(self.symbol), \
                         self.TimeRules.AfterMarketOpen(self.symbol, 30), \
                         self.Plotting)
                         
-        '''
-        Consider looping over the csv using itertuples to access dates and symbol...
-        for bar in history.itertuples():
-            self.fast.Update(bar.Index[1], bar.close)
-            self.slow.Update(bar.Index[1], bar.close)
-        '''
+        # Download NN Buy Data
+        self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/QuantCSV/amd_predictions_05072021.csv"
+        csv = self.Download(self.url)
         
-        # Schedule Call Options purchases 1 minute after market open
-        self.Schedule.On(Self.DateRules.EveryDay("SYMBOL"),self.TimeRules.AfterMarketOpen("SYMBOL", 1), self.BuyCall)
-    
-    def Parse(self,url):
-        # download file from url as string
-        csv = self.Download(url).split("\n")
-        
-        # remove formatting characters
-        buyDates = [x.replace("\r","").replace(" ","").replace("/","") for x in csv]
-        
-        # parse data into dictionary
-        for arr in buyDates:
-            buyDates = datetime.strptime(arr[0], "%m%d%Y").date()
-            
-        return arr
+        # Schedule Buys
+        self.Schedule.On(self.DateRules.On(2020, 4, 13), \
+                        self.TimeRules.At(9,31), \
+                        self.BuySignal)
+        self.Schedule.On(self.DateRules.On(2020, 4, 14), \
+                        self.TimeRules.At(9,31), \
+                        self.BuySignal)
+        self.Schedule.On(self.DateRules.On(2020, 4, 15), \
+                        self.TimeRules.At(9,31), \
+                        self.BuySignal)
+        self.Schedule.On(self.DateRules.On(2020, 4, 16), \
+                        self.TimeRules.At(9,31), \
+                        self.BuySignal)
+        self.Schedule.On(self.DateRules.On(2020, 4, 17), \
+                        self.TimeRules.At(9,31), \
+                        self.BuySignal)
 
     def OnData(self, data):
         '''OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
             Arguments:
                 data: Slice object keyed by symbol containing the stock data
         '''
-        if not self.SetWarmup.IsReady or self.IsWarmingUp:
-            return
+        if self.Portfolio.Cash > 30000 and self.buyOptions == 1:
+            self.BuyCall(data)
         
-        # Algorithm Time - we can use this to trade during specific times
-        # if self.Time.weekday() == 1:
-        
-        getDates = self.Parse(self.url)
-        # if prediction date, buy calls
-        for date in getDates:
-            if date == self.Time:
-                self.BuyCall(data)
-
-        # close call before it expires
-        # in the future, we will need to change this to a trailing stop loss
+        # close contract before it expires
         if self.contract:
             if(self.contract.ID.Date - self.Time) <= timedelta(self.DaysBeforeExp):
                 self.Liquidate(self.contract)
                 self.Log("Closed: too close to expiration")
                 self.contract = str()
-            '''
-            else:
-                if self.Securities["AMD"].Close > self.highestContractPrice:
-                    self.highestContractPrice = self.Securities["AMD"].Close
-                    updateFields = UpdateOrderFields()
-                    updateFields.StopPrice = self.highestSPYPrice * 0.9
-                    self.stopMarketTicket.Update(updateFields)
-            '''
-            
-        #Liquidate and Set Holdings
-        #self.Liquidate("Equity Here")
-        #self.SetHoldings("Equity Here")
-                
-        # Utilize self.Debug to display data
-        # self.Debug(self.Portfolio["AMD"].AveragePrice)
-        
+    
+    # Sets 'Buy' Indicator to 1 - this will initiate a contract buy later
+    def BuySignal(self):
+        self.Log("SpecificTime: Fired at : {0}".format(self.Time))
+        self.buyOptions = 1
+    
+    # Buys a Call Option - 
     def BuyCall(self, data):
-        self.Buy(self.contract, 10)  # Buy calls - in the future, we'll add more conditional statements
+        if self.contract == str():
+            # Retrieve options chain data
+            self.contract = self.CallOptionsFilter(data)
+            return
+        #elif not self.Portfolio[self.contract].Invested and data.ContainsKey(self.contract):
+        elif data.ContainsKey(self.contract):
+            ### Change this to buy contracts with a percentage of settled cash
+            self.Buy(self.contract, self.contractAmounts)
+            # Reset buy signal
+            self.buyOptions = 0
             
-    def OptionsFilter(self, data):
+    def CallOptionsFilter(self, data):
         ''' The quantconnect api has multiple way to trade options.  The normal way is to set
             a filter and iterate over each option.  This can be slow so it is more efficient
             to get a list of the options contracts you're interested in and iterating through
@@ -140,29 +96,32 @@ class UglyRedDog(QCAlgorithm):
         # note that the con of using the optionsChainProvider is you can't get Greeks or IV data
         
         contracts = self.OptionChainProvider.GetOptionContractList(self.symbol, data.Time)
-        self.underlyingPrice = self.Securities[self.symbol].Price #safe current price
+        self.underlyingPrice = self.Securities[self.symbol].Price #save current stock price
         
-        #filter the out-of-money put options from the contract list which expire close to self.DTE number of days from now
+        # filter the out-of-money options from the contract list which expire close to self.DTE number of days from now
+        # Call options & less than 10% OTM & between 30/90 days   
         otm_calls = [i for i in contracts if i.ID.OptionRight == OptionRight.Call and
                                             i.ID.StrikePrice - self.underlyingPrice <= self.OTM * self.underlyingPrice and
                                             self.DTE - 30 < (i.ID.Date - data.Time).days < self.DTE + 30]
         
+        test = sorted(sorted(otm_calls, key = lambda x: abs((x.ID.Date - self.Time).days - self.DTE)),
+                                                        key = lambda x: self.underlyingPrice - x.ID.StrikePrice)
+        
+        # Sort options chain by DTE and OTM StrikePrice and add ONE to contract string
         if (len(otm_calls) > 0):
-            contract = sorted(sorted(otm_calls, key = lambda x: abs((x.ID.Date - self.Time).days - self.DTE)),
-                                                    key = lambda x: self.underlyingPrice - x.ID.StrikePrice)[0]
-            if contract not in self.contractsAdded:
-                self.contractsAdded.add(contract)
-                self.AddOptionContract(contract, Resolution.Minute)
-            return contract
-        else:
-            return str()
+                contract = sorted(sorted(otm_calls, key = lambda x: abs((x.ID.Date - self.Time).days - self.DTE)),
+                                                        key = lambda x: self.underlyingPrice - x.ID.StrikePrice)[0]
+                if contract not in self.contractsAdded:
+                    self.contractsAdded.add(contract)
+                    self.AddOptionContract(contract, Resolution.Minute)
+                    return contract
+                elif contract in self.contractsAdded:
+                    self.AddOptionContract(contract, Resolution.Minute)
+                    return contract
+                else:
+                    return str()
             
     def Plotting(self):
-        # plot takes 3 arguements, name, name, data
-        self.Plot("Vol Chart", "Rank", self.rank)
-        
-        self.Plot("Vol Chart", "lvl", self.IVlvl)
-        
         self.Plot("Data Chart", self.symbol, self.Securities[self.symbol].Close)
         
         option_invested = [x.Key for x in self.Portfolio if x.Value.Invested and x.Value.Type == SecurityType.Option]
