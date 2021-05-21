@@ -1,7 +1,7 @@
 # In this algorithm, we are importing a list of 'buy' dates from a github csv.
 # We will purchase call options on these dates and sell them with a simple
 # trailing stop-limit.
-# Resources - https://youtu.be/Lq-Ri7YU5fU
+# Resources - https://www.quantconnect.com/forum/discussion/9482/simple-example-long-put-hedge/p1?ref=towm
 
 import io
 import requests
@@ -53,7 +53,7 @@ class WellDressedBlackLemur(QCAlgorithm):
         df = df.drop(columns=['date','prediction'])
         buyArray = df.to_numpy()
         
-        # Next step is to iterate through each date and schedule a buy signal for the algorithm
+        # Next step is to iterate through each date and schedule a buy event
         for x in buyArray:
             # Schedule Buys - https://www.quantconnect.com/docs/algorithm-reference/scheduled-events
             self.Schedule.On(self.DateRules.On(int(x[2]), int(x[0]), int(x[1])), \
@@ -86,22 +86,24 @@ class WellDressedBlackLemur(QCAlgorithm):
             # Retrieve options chain data
             self.contract = self.CallOptionsFilter(data)
             return
-        #elif not self.Portfolio[self.contract].Invested and data.ContainsKey(self.contract):
+        # we must ensure the data passed to OnData has the contract as a key before placing a trade
         elif data.ContainsKey(self.contract):
             ### Change this to buy contracts with a percentage of settled cash
             self.Buy(self.contract, self.contractAmounts)
             # Reset buy signal
             self.buyOptions = 0
+            self.Stop
             
     def CallOptionsFilter(self, data):
-        ''' The quantconnect api has multiple way to trade options.  The normal way is to set
-            a filter and iterate over each option.  This can be slow so it is more efficient
-            to get a list of the options contracts you're interested in and iterating through
-            that.'''
-        ''' OptionChainProvider gets a list of option contracts for an underlying symbol at requested date.
-            Then you can manually filter the contract list returned by GetOptionContractList.
-            The manual filtering will be limited to the information included in the Symbol
-            (strike, expiration, type, style) and/or prices from a History call '''
+        '''
+        The quantconnect api has multiple way to trade options.  The normal way is to set
+        a filter and iterate over each option.  This can be slow so it is more efficient
+        to get a list of the options contracts you're interested in and iterating through that.
+        OptionChainProvider gets a list of option contracts for an underlying symbol at requested date.
+        Then you can manually filter the contract list returned by GetOptionContractList.
+        The manual filtering will be limited to the information included in the Symbol
+        (strike, expiration, type, style) and/or prices from a History call.
+        '''
         # note that the con of using the optionsChainProvider is you can't get Greeks or IV data
         
         contracts = self.OptionChainProvider.GetOptionContractList(self.symbol, data.Time)
