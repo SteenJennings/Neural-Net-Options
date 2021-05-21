@@ -12,7 +12,10 @@ from QuantConnect.Data.Custom.CBOE import * # get pricing data
 class WellDressedBlackLemur(QCAlgorithm):
 
     def Initialize(self):
-        self.SetStartDate(2000, 1, 1)  # Set Start Date
+        # NOTE: QuantConnect provides equity options data from AlgoSeek going back as far as 2010.
+        # The options data is available only in minute resolution, which means we need to consolidate
+        # the data if we wish to work with other resolutions. 
+        self.SetStartDate(2010, 1, 1)  # Set Start Date
         self.SetEndDate(2021, 4, 26) # Set End Date
         self.SetCash(1000000)  # Set Strategy Cash
         
