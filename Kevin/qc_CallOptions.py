@@ -12,12 +12,12 @@ from QuantConnect.Data.Custom.CBOE import * # get pricing data
 class WellDressedBlackLemur(QCAlgorithm):
 
     def Initialize(self):
-        self.SetStartDate(2020, 4, 13)  # Set Start Date
+        self.SetStartDate(2000, 1, 1)  # Set Start Date
         self.SetEndDate(2021, 4, 26) # Set End Date
         self.SetCash(1000000)  # Set Strategy Cash
         
         #Equity Info Here
-        self.equity = self.AddEquity("TSLA", Resolution.Minute)
+        self.equity = self.AddEquity("AMD", Resolution.Minute)
         #Normalize data or calculations will be off
         self.equity.SetDataNormalizationMode(DataNormalizationMode.Raw)
         self.symbol = self.equity.Symbol
@@ -46,15 +46,14 @@ class WellDressedBlackLemur(QCAlgorithm):
         df = pd.read_csv(io.StringIO(self.Download(self.url)))
         df[['month','day','year']] = df['date'].str.split("/", expand = True)
         df = df.drop(columns=['date','Prediction'])
-        # Next step is to iterate through each date and schedule a buy signal for the algorithm
+        buyArray = df.to_numpy()
         
-        # Schedule Buys - https://www.quantconnect.com/docs/algorithm-reference/scheduled-events
-        self.Schedule.On(self.DateRules.On(2020, 4, 13), \
-                        self.TimeRules.At(9,31), \
-                        self.BuySignal)
-        self.Schedule.On(self.DateRules.On(2020, 4, 14), \
-                        self.TimeRules.At(9,31), \
-                        self.BuySignal)
+        # Next step is to iterate through each date and schedule a buy signal for the algorithm
+        for x in buyArray:
+            # Schedule Buys - https://www.quantconnect.com/docs/algorithm-reference/scheduled-events
+            self.Schedule.On(self.DateRules.On(int(x[2]), int(x[0]), int(x[1])), \
+                            self.TimeRules.At(9,31), \
+                            self.BuySignal)
 
     def OnData(self, data):
         '''OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
