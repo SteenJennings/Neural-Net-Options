@@ -2,6 +2,13 @@
 # We will purchase call options on these dates and sell them with a simple
 # trailing stop-limit.
 # Resources - https://youtu.be/Lq-Ri7YU5fU
+
+import io
+import requests
+import pandas as pd
+from datetime import timedelta
+from QuantConnect.Data.Custom.CBOE import * # get pricing data
+
 class WellDressedBlackLemur(QCAlgorithm):
 
     def Initialize(self):
@@ -34,24 +41,18 @@ class WellDressedBlackLemur(QCAlgorithm):
                         self.TimeRules.AfterMarketOpen(self.symbol, 30), \
                         self.Plotting)
                         
-        # Download NN Buy Data
+        # Download NN Buy Signals from Github Raw CSV
         self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/QuantCSV/amd_predictions_05072021.csv"
-        csv = self.Download(self.url)
+        df = pd.read_csv(io.StringIO(self.Download(self.url)))
+        df[['month','day','year']] = df['date'].str.split("/", expand = True)
+        df = df.drop(columns=['date','Prediction'])
+        # Next step is to iterate through each date and schedule a buy signal for the algorithm
         
         # Schedule Buys - https://www.quantconnect.com/docs/algorithm-reference/scheduled-events
         self.Schedule.On(self.DateRules.On(2020, 4, 13), \
                         self.TimeRules.At(9,31), \
                         self.BuySignal)
         self.Schedule.On(self.DateRules.On(2020, 4, 14), \
-                        self.TimeRules.At(9,31), \
-                        self.BuySignal)
-        self.Schedule.On(self.DateRules.On(2020, 4, 15), \
-                        self.TimeRules.At(9,31), \
-                        self.BuySignal)
-        self.Schedule.On(self.DateRules.On(2020, 4, 16), \
-                        self.TimeRules.At(9,31), \
-                        self.BuySignal)
-        self.Schedule.On(self.DateRules.On(2020, 4, 17), \
                         self.TimeRules.At(9,31), \
                         self.BuySignal)
 
@@ -107,9 +108,6 @@ class WellDressedBlackLemur(QCAlgorithm):
         otm_calls = [i for i in contracts if i.ID.OptionRight == OptionRight.Call and
                                             i.ID.StrikePrice - self.underlyingPrice <= self.OTM * self.underlyingPrice and
                                             self.DTE - 30 < (i.ID.Date - data.Time).days < self.DTE + 30]
-        
-        test = sorted(sorted(otm_calls, key = lambda x: abs((x.ID.Date - self.Time).days - self.DTE)),
-                                                        key = lambda x: self.underlyingPrice - x.ID.StrikePrice)
         
         # Sort options chain by DTE and OTM StrikePrice and add ONE to contract string
         if (len(otm_calls) > 0):
