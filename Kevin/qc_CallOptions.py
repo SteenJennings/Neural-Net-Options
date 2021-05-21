@@ -34,21 +34,23 @@ class WellDressedBlackLemur(QCAlgorithm):
         
         # Buy/Sell Contract Criteria
         self.DaysBeforeExp = 5 # days before we close the options
-        self.DTE = 60 # target contracts before expiration
-        self.OTM = 0.10 # target OTM %
+        self.DTE = 50 # target contracts before expiration
+        self.OTM = 0.20 # target OTM %
         self.percentage = 0.05 # percent of portfolio
-        self.contractAmounts = 10 # number of contracts to purchase
+        self.contractAmounts = 50 # number of contracts to purchase
         
         # Schedule plotting function 30 minutes after every market open
         self.Schedule.On(self.DateRules.EveryDay(self.symbol), \
                         self.TimeRules.AfterMarketOpen(self.symbol, 30), \
                         self.Plotting)
                         
-        # Download NN Buy Signals from Github Raw CSV
+        # Download NN Buy Signals from Github Raw CSV and modify dataframes
         self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/QuantCSV/amd_predictions_05072021.csv"
         df = pd.read_csv(io.StringIO(self.Download(self.url)))
         df[['month','day','year']] = df['date'].str.split("/", expand = True)
-        df = df.drop(columns=['date','Prediction'])
+        df.columns = df.columns.str.lower()
+        df = df[df['prediction'] == 1]
+        df = df.drop(columns=['date','prediction'])
         buyArray = df.to_numpy()
         
         # Next step is to iterate through each date and schedule a buy signal for the algorithm
