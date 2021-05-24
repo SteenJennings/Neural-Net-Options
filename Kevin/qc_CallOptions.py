@@ -9,20 +9,20 @@ from datetime import timedelta
 from QuantConnect.Data.Custom.CBOE import * # get pricing data
 
 class WellDressedBlackLemur(QCAlgorithm):
-    stopMarketTicket = None
-    stopMarketOrderFillTime = datetime.min
-    highestSPYPrice = 0
+    stopOrderTicket = None
+    stopOrderFillTime = datetime.min
+    highestContractPrice = 0
 
     def Initialize(self):
         # NOTE: QuantConnect provides equity options data from AlgoSeek going back as far as 2010.
         # The options data is available only in minute resolution, which means we need to consolidate
         # the data if we wish to work with other resolutions. 
         self.SetStartDate(2010, 1, 1)  # Set Start Date
-        self.SetEndDate(2011, 5, 20) # Set End Date
+        self.SetEndDate(2021, 5, 20) # Set End Date
         self.SetCash(1000000)  # Set Strategy Cash
         
         #Equity Info Here
-        self.equity = self.AddEquity("AMZN", Resolution.Minute)
+        self.equity = self.AddEquity("AMD", Resolution.Minute)
         #Normalize data or calculations will be off
         self.equity.SetDataNormalizationMode(DataNormalizationMode.Raw)
         self.symbol = self.equity.Symbol
@@ -37,8 +37,8 @@ class WellDressedBlackLemur(QCAlgorithm):
         
         # Buy/Sell Contract Criteria
         self.DaysBeforeExp = 5 # days before we close the options
-        self.DTE = 35 # target contracts before expiration
-        self.OTM = 0.10 # target OTM %
+        self.DTE = 15 # target contracts before expiration
+        self.OTM = 0.05 # target OTM %
         self.contractAmounts = 50 # number of contracts to purchase
         
         # Schedule plotting function 30 minutes after every market open
@@ -48,8 +48,8 @@ class WellDressedBlackLemur(QCAlgorithm):
                         
         # Download NN Buy Signals from Github Raw CSV and modify dataframes
         # - add month/day/year, filter df to predictions only, drop date and prediction columns
-        #self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/QuantCSV/amd_predictions_05072021.csv"
-        self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/QuantCSV/amzn_predictions_qc_052121.csv"
+        self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/QuantCSV/amd_predictions_05072021.csv"
+        #self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/QuantCSV/amzn_predictions_qc_052121.csv"
         df = pd.read_csv(io.StringIO(self.Download(self.url)))
         df[['month','day','year']] = df['date'].str.split("/", expand = True)
         df.columns = df.columns.str.lower()
@@ -58,7 +58,7 @@ class WellDressedBlackLemur(QCAlgorithm):
         df = df[df['year'] >= 2010]
         df = df.drop(columns=['date','prediction'])
         buyArray = df.to_numpy()
-        '''
+        
         # Next step is to iterate through each date and schedule a buy event
         for x in buyArray:
             # Schedule Buys - https://www.quantconnect.com/docs/algorithm-reference/scheduled-events
@@ -70,7 +70,7 @@ class WellDressedBlackLemur(QCAlgorithm):
         self.Schedule.On(self.DateRules.On(2010, 4, 23), \
                             self.TimeRules.At(9,31), \
                             self.BuySignal)
-        
+        '''
     def OnData(self, data):
         '''OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
             Arguments:
@@ -152,7 +152,7 @@ class WellDressedBlackLemur(QCAlgorithm):
             
     def OnOrderEvent(self, orderEvent):
         # log order events
-        self.Log(str(orderEvent))
+        # self.Log(str(orderEvent))
         
         #1. Write code to only act on fills
         if orderEvent.Status == OrderStatus.Filled:
