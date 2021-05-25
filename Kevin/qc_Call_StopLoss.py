@@ -20,16 +20,16 @@ from QuantConnect.Data.Custom.CBOE import * # get pricing data
 class BasicTemplateOptionsAlgorithm(QCAlgorithm):
     
     # Order ticket for our stop order, Datetime when stop order was last hit
-    stopMarketTicket = None
+    stopMarketTicketDictionary = {} # KVP to track stopMarketTickets for each contract
     stopMarketFillTime = datetime.min
-    highestContractPrice = 0 # we will need this for the trailing stop loss
+    contractDictionary = {} # KVP to be used for trailing stop loss - track AskPrice highs
     
     def Initialize(self):
         # NOTE: QuantConnect provides equity options data from AlgoSeek going back as far as 2010.
         # The options data is available only in minute resolution, which means we need to consolidate
         # the data if we wish to work with other resolutions.
-        self.SetStartDate(2012, 1, 1)
-        self.SetEndDate(2013, 1, 1)
+        self.SetStartDate(2015, 1, 1)
+        self.SetEndDate(2021, 5, 20)
         self.SetCash(100000) # Starting Cash for our portfolio
 
         # Equity Info Here
@@ -61,7 +61,7 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
         df.columns = df.columns.str.lower()
         df = df[df['prediction'] == 1]
         df['year'] = df['year'].astype(int)
-        df = df[df['year'] == 2012]
+        df = df[df['year'] >= 2015]
         df = df.drop(columns=['date','prediction'])
         buyArray = df.to_numpy()
         
@@ -96,17 +96,18 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
             
             ### I need to implement a Dictionary to be called in this function and BuyCall
             ### Dictionary will create KVP between contracts and highest contract prices
-            '''
-            elif self.contract.AskPrice > self.highestContractPrice:
+            elif self.contract.AskPrice > self.contractDictionary[self.contract]:
+                self.Log("Contract AskPrice is higher")
+                self.Debug("Contract AskPrice is higher")
                 # Save the new high to highestContractPrice; then update the stop price 
-                self.highestContractPrice = self.contract.AskPrice
+                self.contractDictionary[self.contract] = self.contract.AskPrice
                 updateFields = UpdateOrderFields()
-                updateFields.StopPrice = self.highestContractPrice * 0.75
-                self.stopMarketTicket.Update(updateFields)
-                
+                updateFields.StopPrice = round((self.contractDictionary[self.contract] * 0.75),2)
+                #self.stopMarketTicket.Update(updateFields)
+                self.stopMarketTicketDictionary[self.contract].Update(updateFields)
                 # Print the new stop price with Debug()
-                self.Debug("SPY: " + str(self.highestSPYPrice) + " Stop: " + str(updateFields.StopPrice))
-            '''
+                self.Log("AMZN: " + str(self.highestSPYPrice) + " Stop: " + str(updateFields.StopPrice))
+            
     # Sets 'Buy' Indicator to 1
     def BuySignal(self):
         self.Log("BuySignal: Fired at : {0}".format(self.Time))
@@ -131,15 +132,17 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
         if self.contract:
             self.MarketOrder(self.contract.Symbol, self.contractAmounts)
             self.stopMarketTicket = self.StopMarketOrder(self.contract.Symbol, \
-                                    -self.contractAmounts, 0.75 * self.contract.AskPrice)
+                                    -self.contractAmounts, round((0.75 * self.contract.AskPrice),2))
+            self.stopMarketTicketDictionary[self.contract]=self.stopMarketTicket
+            self.contractDictionary[self.contract]=self.contract.AskPrice
             self.buyOptions = 0
             #self.MarketOnCloseOrder(symbol, -1)
 
     def OnOrderEvent(self, orderEvent):
-        #self.Log(str(orderEvent))
+        self.Log(str(orderEvent))
         
         # Check if we hit our stop loss (Compare the orderEvent.Id with the stopMarketTicket.OrderId)
         # It's important to first check if the ticket isn't null (i.e. making sure it has been submitted)
-        if self.stopMarketTicket is not None and self.stopMarketTicket.OrderId == orderEvent.OrderId:
+        #if self.stopMarketTicket is not None and self.stopMarketTicket.OrderId == orderEvent.OrderId:
             # Store datetime
-            self.stopMarketFillTime = self.Time
+            #self.stopMarketFillTime = self.Time
