@@ -105,6 +105,12 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
             self.BuyCall(slice)
         
         if self.contractList:
+            # check if the contracts are close to expiration
+            for i in self.contractList:
+                if(i.Symbol.ID.Date - self.Time) <= timedelta(self.DaysBeforeExp):
+                    self.Liquidate(i.Symbol, "Closed: too close to expiration")
+                    self.Log("Closed: too close to expiration")
+                    self.contractList.remove(i)
             
             # update stop loss if the underlying equity has increased
             if self.equity.Price > self.highestUnderlyingPrice:
@@ -115,20 +121,16 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
             
             # Sell all contracts if the underlying equity's price has dropped below the stop loss
             elif self.equity.Price <= self.newStopPrice:
-                for i in self.contractList:
-                    self.Liquidate(i.Symbol, "Stop Loss - Underlying Price" )
-                    self.Log("Closed: Stop Loss - Underlying Price: " + str(self.equity.Price))
-                    self.contractList.remove(i)
+                self.Liquidate()
+                self.Log("Stop Loss: Liquidated")
+                self.contractList = []
+                
+                #for i in self.contractList:
+                #    self.Liquidate(i.Symbol, "Stop Loss - Underlying Price" )
+                #    self.Log("Closed: Stop Loss - Underlying Price: " + str(self.equity.Price))
+                #    self.contractList.remove(i)
                 
                 self.newStopPrice = 0
-            
-            # check if the contracts are too close to expiration
-            if self.contractList:
-                for i in self.contractList:
-                    if(i.Symbol.ID.Date - self.Time) <= timedelta(self.DaysBeforeExp):
-                        self.Liquidate(i.Symbol, "Closed: too close to expiration")
-                        self.Log("Closed: too close to expiration")
-                        self.contractList.remove(i)
 
     # Filter Options: https://www.quantconnect.com/docs/data-library/options
     def FilterOptions(self,slice):
