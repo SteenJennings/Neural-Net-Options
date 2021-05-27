@@ -41,12 +41,12 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
         # the data if we wish to work with other resolutions.
         
         # Dates below are adjusted to match imported dates from NN
-        self.SetStartDate(2014, 10, 28)
-        self.SetEndDate(2021, 5, 24)
+        self.SetStartDate(2021, 1, 1)
+        self.SetEndDate(2021, 5, 26)
         self.SetCash(100000) # Starting Cash for our portfolio
 
         # Equity Info Here
-        self.stockSymbol = "GOOG" # stock symbol here
+        self.stockSymbol = "NVDA" # stock symbol here
         self.equity = self.AddEquity(self.stockSymbol, Resolution.Minute)
         self.equity.SetDataNormalizationMode(DataNormalizationMode.Raw)
         self.option = self.AddOption(self.stockSymbol)
@@ -66,25 +66,27 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
         # Download NN Buy Signals from Github Raw CSV
         #self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/QuantCSV/amd_predictions_05072021.csv"
         #self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/QuantCSV/amzn_predictions_qc_052121.csv"
-        self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/QuantCSV/GOOG_pred.csv"
+        #self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/QuantCSV/GOOG_pred.csv"
         #self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/QuantCSV/ROKU_pred.csv"
+        self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/QuantCSV/NVDA_pred_2021-05-27.csv"
         
         # modify dataframes
         df = pd.read_csv(io.StringIO(self.Download(self.url)))
         # split date column to three different columns for year, month and day 
-        df[['year','month','day']] = df['dates'].str.split("-", expand = True) 
+        df[['year','month','day']] = df['date'].str.split("-", expand = True) 
         df.columns = df.columns.str.lower()
         df = df[df['prediction'] == 1]  # filter predictions
         df['year'] = df['year'].astype(int) 
         # filter predictions gereater than 2010 because QuantConnect only provides
         # options data as far back as 2010
         df = df[df['year'] >= 2010]
-        df = df.drop(columns=['dates','prediction'])
+        df = df.drop(columns=['date','prediction'])
         buyArray = df.to_numpy() # convert to array
         
         # iterate through the predictions and schedule a buy event
         for x in buyArray:
-            # Schedule Buys - https://www.quantconnect.com/docs/algorithm-reference/scheduled-events
+            # Schedule Buys:
+            #   https://www.quantconnect.com/docs/algorithm-reference/scheduled-events
             self.Schedule.On(self.DateRules.On(int(x[0]), int(x[1]), int(x[2])), \
                             self.TimeRules.At(9,35), \
                             self.BuySignal)
@@ -93,9 +95,10 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
                             self.TimeRules.At(9,35), \
                             self.BuySignal)
         '''
-    # OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
+
+    # OnData event is the primary entry point for your algorithm. 
+    # Each new data point will be pumped in here.
     def OnData(self,slice):
-        
         if self.Portfolio.Cash <= 10000:
             self.Log("Low Balance < $10,000")
         elif self.buyOptions == 1:
@@ -107,7 +110,8 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
             if self.equity.Price > self.highestUnderlyingPrice:
                 self.highestUnderlyingPrice = self.equity.Price
                 self.newStopPrice = round((self.highestUnderlyingPrice * 0.95),2)
-                self.Log(str(self.stockSymbol)+ ": " + str(self.highestUnderlyingPrice) + " Stop: " + str(self.newStopPrice))
+                self.Log(str(self.stockSymbol)+ ": " + str(self.highestUnderlyingPrice) \
+                            + " Stop: " + str(self.newStopPrice))
             
             # Sell all contracts if the underlying equity's price has dropped below the stop loss
             elif self.equity.Price <= self.newStopPrice:
@@ -126,9 +130,9 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
                         self.Log("Closed: too close to expiration")
                         self.contractList.remove(i)
 
-    
+    # Filter Options: https://www.quantconnect.com/docs/data-library/options
     def FilterOptions(self,slice):
-        otmContractLimit = int(self.equity.Price * self.OTM)
+        otmContractLimit = int(self.equity.Price * self.OTM) # max OTM amount
 
         # set our strike/expiry filter for this option chain
         #self.option.SetFilter(0, otmContractLimit, timedelta(self.MinDTE), timedelta(self.MaxDTE))
@@ -136,7 +140,8 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
         # By default, the option universe is filtered down to contracts that expire within 35 days, 
         # one contract below and another above ATM, and exclude weekly. A different set of contracts 
         # can be chosen with the SetFilter method:
-        self.option.SetFilter(lambda universe: universe.WeeklysOnly().Strikes(0, otmContractLimit).Expiration(timedelta(self.MinDTE), timedelta(self.MaxDTE)))
+        self.option.SetFilter(lambda universe: universe.WeeklysOnly().Strikes(0, \
+                        otmContractLimit).Expiration(timedelta(self.MinDTE), timedelta(self.MaxDTE)))
     
     
     # Sets 'Buy' Indicator to 1
@@ -146,7 +151,6 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
 
     # Buy a Call Option - 
     def BuyCall(self, slice):
-        
         self.FilterOptions(slice)
         
         # save option contract chain, sort and filter
