@@ -3,19 +3,23 @@
 # FileName: NN_Call_UnderlyingTrailStop.py
 # Date: 5/25/2021
 # Class: Capstone
-# Description: This code loads buy signals from a CSV and schedules buy dates for each signal/prediction.  
+# Description:  This code loads predictions from a CSV and schedules buy dates for each.  
 #               The algorithm will purchase Call Options based on criteria such as % OTM, Min and Max DTE,
 #               portfolio risk profile, etc.  After a contract is purchased, the algorithm closes (sells)  
-#               the contract based on the risk profolio, which in this case is a combination of selling
+#               the contract based on the risk criteria, which in this case is a combination of selling
 #               X number of days before expiration or utilizing a tight trailing stop loss on the underlying
 #               equity (whichever comes first).  
 #
-# Resources:
+# Resources: Some code was taken from QuantConnect BootCamps, Documents, Tutorials and Forums. See Below:
 #   https://www.quantconnect.com/forum/discussion/9482/simple-example-long-put-hedge/p1?ref=towm
 #   https://www.quantconnect.com/tutorials/introduction-to-options/quantconnect-options-api#QuantConnect-Options-API-Algorithm
+#   https://www.quantconnect.com/docs/algorithm-reference/handling-data
+#   https://www.quantconnect.com/tutorials/applied-options/iron-condor
+#   https://www.quantconnect.com/learning/course/1/boot-camp-101-us-equities
+#   https://www.quantconnect.com/docs/algorithm-reference/scheduled-events
 #
 ###############################################################################################################################
-
+"""
 from clr import AddReference
 AddReference("System")
 AddReference("QuantConnect.Algorithm")
@@ -24,11 +28,12 @@ AddReference("QuantConnect.Common")
 from System import *
 from QuantConnect import *
 from QuantConnect.Algorithm import *
-from datetime import timedelta
-import pandas as pd  # for data processing
-import io
-import requests
 from QuantConnect.Data.Custom.CBOE import * # get pricing data specifically from CBOE
+"""
+from datetime import timedelta
+import pandas as pd  # data processing
+import io # converting data to csv 
+import requests # importing data from URL
 
 class BasicTemplateOptionsAlgorithm(QCAlgorithm):
 
@@ -57,7 +62,7 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
         df['year'] = df['year'].astype(int) 
         df['month'] = df['month'].astype(int) 
         df['day'] = df['day'].astype(int) 
-        # filter predictions gereater than 2010 because QuantConnect only provides
+        # filter predictions greater than 2010 because QuantConnect only provides
         # options data as far back as 2010
         df = df[df['year'] >= 2010]
         df = df.drop(columns=['date','prediction'])
@@ -72,7 +77,7 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
         self.stockSymbol = "CHWY" # stock symbol here
         self.equity = self.AddEquity(self.stockSymbol, Resolution.Minute)
         self.equity.SetDataNormalizationMode(DataNormalizationMode.Raw)
-        self.option = self.AddOption(self.stockSymbol)
+        self.option = self.AddOption(self.stockSymbol, Resolution.Minute)
         self.option_symbol = self.option.Symbol
         self.SetBenchmark(self.stockSymbol)
         self.option.SetFilter(self.FilterOptions)
@@ -81,26 +86,23 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
         self.contract = str() # store option contract info
         self.contractList = [] # store purchased contracts
         self.buyOptions = 0 # buy signal - loaded from csv
-        self.DaysBeforeExp = 2 # close the options this many days before expiration
+        self.DaysBeforeExp = 5 # close the options this many days before expiration
         self.stopLossPercent = .985 # underlying stop loss percentage
         self.OTM = 0.03 # target OTM %
-        self.MinDTE = 7 # contract minimum DTE
-        self.MaxDTE = 14 # contract maximum DTE
+        self.MinDTE = 10 # contract minimum DTE
+        self.MaxDTE = 21 # contract maximum DTE
         self.contractAmounts = 1 # number of contracts to purchase
         self.portfolioRisk = 0.1 # percentage of portfolio to be used for purchases
         
         # iterate through the predictions and schedule a buy event
         for x in buyArray:
-            # Schedule Buys:
-            #   https://www.quantconnect.com/docs/algorithm-reference/scheduled-events
             self.Schedule.On(self.DateRules.On(x[0], x[1], x[2]), \
                             self.TimeRules.At(9,35), \
                             self.BuySignal)
-        '''
-        self.Schedule.On(self.DateRules.On(2012, 3, 20), \
-                            self.TimeRules.At(9,35), \
-                            self.BuySignal)
-        '''
+        
+        #self.Schedule.On(self.DateRules.On(2012, 3, 20), \
+        #                    self.TimeRules.At(9,35), \
+        #                    self.BuySignal)
 
     # OnData event is the primary entry point for your algorithm. 
     # Each new data point will be pumped in here.
@@ -170,6 +172,7 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
             self.contractList.append(self.contract) # add contract to list
             self.contract = str()
             self.buyOptions = 0 # reset buy signal
+            self.Log("Call Purchase: Underlying Price is " + str(self.equity.Price))
 
     # Log Order Events
     def OnOrderEvent(self, orderEvent):
