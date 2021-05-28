@@ -46,12 +46,8 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
         # the data if we wish to work with other resolutions.
         
         # Download NN Buy Signals from Github Raw CSV
-        #self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/QuantCSV/amd_predictions_05072021.csv"
-        #self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/QuantCSV/amzn_predictions_qc_052121.csv"
-        #self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/QuantCSV/GOOG_pred.csv"
-        #self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/QuantCSV/ROKU_pred.csv"
-        #self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/QuantCSV/NVDA_pred_2021-05-27.csv"
-        self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/QuantCSV/CHWY_pred_2021-05-27.csv"
+        #self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/QuantCSV/SNAP_pred_2021-05-28%20(1).csv"
+        self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/QuantCSV/AMZN_pred_2021-05-27.csv"
         
         # modify dataframes
         df = pd.read_csv(io.StringIO(self.Download(self.url)))
@@ -69,15 +65,15 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
         buyArray = df.to_numpy() # convert to array
         
         # Dates below are adjusted to match imported dates from NN
-        self.SetStartDate(buyArray[0][0], buyArray[0][1], buyArray[0][2])
-        self.SetEndDate(buyArray[-1][0], buyArray[-1][1], buyArray[-1][2])
+        self.SetStartDate(buyArray[0][1], buyArray[0][2], buyArray[0][3])
+        self.SetEndDate(buyArray[-1][1], buyArray[-1][2], buyArray[-1][3])
         self.SetCash(100000) # Starting Cash for our portfolio
 
         # Equity Info Here
-        self.stockSymbol = "CHWY" # stock symbol here
+        self.stockSymbol = str(buyArray[0][0]) # stock symbol here
         self.equity = self.AddEquity(self.stockSymbol, Resolution.Minute)
         self.equity.SetDataNormalizationMode(DataNormalizationMode.Raw)
-        self.option = self.AddOption(self.stockSymbol, Resolution.Minute)
+        self.option = self.AddOption(self.stockSymbol, Resolution.Minute )
         self.option_symbol = self.option.Symbol
         self.SetBenchmark(self.stockSymbol)
         self.option.SetFilter(self.FilterOptions)
@@ -85,18 +81,21 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
         # Option Contracts
         self.contract = str() # store option contract info
         self.contractList = [] # store purchased contracts
-        self.buyOptions = 0 # buy signal - loaded from csv
-        self.DaysBeforeExp = 5 # close the options this many days before expiration
-        self.stopLossPercent = .985 # underlying stop loss percentage
-        self.OTM = 0.03 # target OTM %
-        self.MinDTE = 10 # contract minimum DTE
-        self.MaxDTE = 21 # contract maximum DTE
-        self.contractAmounts = 1 # number of contracts to purchase
-        self.portfolioRisk = 0.1 # percentage of portfolio to be used for purchases
+        self.buyOptionSignal = 0 # buy signal - loaded from csv
+        self.DaysBeforeExp = 3 # close the options this many days before expiration
+        self.stopLossPercent = .95 # underlying stop loss percentage
+        self.OTM = 0.10 # target OTM %
+        self.MinDTE = 25 # contract minimum DTE
+        self.MaxDTE = 35 # contract maximum DTE
+        self.buyNumOfContracts = 0 # number of contracts to purchase
+        self.portfolioRisk = 0.05 # percentage of portfolio to be used for purchases
+        self.AdjRiskForMomentum = 0 
         
         # iterate through the predictions and schedule a buy event
+        self.daysInARow = 0
         for x in buyArray:
-            self.Schedule.On(self.DateRules.On(x[0], x[1], x[2]), \
+            
+            self.Schedule.On(self.DateRules.On(x[1], x[2], x[3]), \
                             self.TimeRules.At(9,35), \
                             self.BuySignal)
         
@@ -109,16 +108,11 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
     def OnData(self,slice):
         if self.Portfolio.Cash <= 10000:
             self.Log("Low Balance < $10,000")
-        elif self.buyOptions == 1:
+            self.Debug("Low Balance < $10,000")
+        elif self.buyOptionSignal == 1:
             self.BuyCall(slice)
-        
+            
         if self.contractList:
-            # check if the contracts are close to expiration
-            for i in self.contractList:
-                if(i.Symbol.ID.Date - self.Time) <= timedelta(self.DaysBeforeExp):
-                    self.Liquidate(i.Symbol, "Closed: too close to expiration")
-                    self.Log("Closed: too close to expiration")
-                    self.contractList.remove(i)
             
             # update stop loss if the underlying equity has increased
             if self.equity.Price > self.highestUnderlyingPrice:
@@ -127,12 +121,21 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
                 #self.Log(str(self.stockSymbol)+ ": " + str(self.highestUnderlyingPrice) \
                 #            + " Stop: " + str(self.newStopPrice))
             
+                
             # Sell all contracts if the underlying equity's price has dropped below the stop loss
             elif self.equity.Price <= self.newStopPrice:
                 self.Liquidate()
-                self.Log("Stop Loss Hit: Liquidated")
+                self.Log("Stop Loss Hit: Portfolio Liquidated")
                 self.contractList = []
+                self.highestUnderlyingPrice = 0
                 self.newStopPrice = 0
+                
+            # check if the contracts are close to expiration
+            for i in self.contractList:
+                if(i.Symbol.ID.Date - self.Time) <= timedelta(self.DaysBeforeExp):
+                    self.Liquidate(i.Symbol, "Closed: too close to expiration")
+                    self.Log("Closed: too close to expiration")
+                    self.contractList.remove(i)
     
     # Filter Options: https://www.quantconnect.com/docs/data-library/options
     def FilterOptions(self, universe):
@@ -147,7 +150,7 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
     # Sets 'Buy' Indicator to 1
     def BuySignal(self):
         self.Log("BuySignal: Fired at : {0}".format(self.Time))
-        self.buyOptions = 1
+        self.buyOptionSignal = 1
 
     # Buy a Call Option - 
     def BuyCall(self, slice):
@@ -158,21 +161,29 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
 
             # we sort the contracts to find OTM contract with farthest expiration
             contracts = sorted(sorted(sorted(chain, \
-                key = lambda x: abs(chain.Underlying.Price - x.Strike)), \
+                key = lambda x: abs(chain.Underlying.Price - x.Strike), reverse=True), \
                 key = lambda x: x.Expiry, reverse=True), \
                 key = lambda x: x.Right)
             
             if len(contracts) == 0: continue
-            self.contract = contracts[0]
-
+            
+            if contracts[0].AskPrice == 0: 
+                self.contract = contracts[1]
+            else: 
+                self.contract = contracts[0]
+        
+        #self.Debug("Testing Stop Point")
         # submit an order to purchase a call
         if self.contract:
-            #if not slice.Contains(self.contract.Symbol): return
-            self.MarketOrder(self.contract.Symbol, self.contractAmounts)
+            self.buyNumOfContracts = int((self.portfolioRisk * self.Portfolio.Cash) / (self.contract.AskPrice * 100))
+            if self.buyNumOfContracts < 1:
+                self.buyNumOfContracts = 1
+            self.MarketOrder(self.contract.Symbol, self.buyNumOfContracts)
             self.contractList.append(self.contract) # add contract to list
             self.contract = str()
-            self.buyOptions = 0 # reset buy signal
-            self.Log("Call Purchase: Underlying Price is " + str(self.equity.Price))
+            self.buyOptionSignal = 0 # reset buy signal
+            #self.Log("Call Purchase: Underlying Price is " + str(self.equity.Price))
+            #self.Debug("Call Purchase: Underlying Price is " + str(self.equity.Price))
 
     # Log Order Events
     def OnOrderEvent(self, orderEvent):
