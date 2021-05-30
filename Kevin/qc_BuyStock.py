@@ -1,5 +1,6 @@
 # using NN Buy Signals to purchase stock - the results here will be compared to the results 
 # from purchasing Options Contracts 
+# sell criteria: at this point we are only selling after holding the equity for 3 days
 
 from datetime import timedelta
 import pandas as pd  # data processing
@@ -13,23 +14,21 @@ class SmoothYellowFly(QCAlgorithm):
         # the data if we wish to work with other resolutions.
         
         # Download NN Buy Signals from Github Raw CSV
-        #self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/QuantCSV/SNAP_pred_2021-05-28%20(1).csv"
-        #self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/QuantCSV/GME_pred_2021-05-28.csv"
-        self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/QuantCSV/AMC_pred_2021-05-28.csv"
+        self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/Final_NN_Output/AAPL_pred_2021-05-30.csv"
         
         # modify dataframes
         df = pd.read_csv(io.StringIO(self.Download(self.url)))
         # split date column to three different columns for year, month and day 
         df[['year','month','day']] = df['date'].str.split("-", expand = True) 
         df.columns = df.columns.str.lower()
-        df = df[df['prediction'] == 1]  # filter predictions
+        df = df[df['expected'] == 1]  # filter predictions
         df['year'] = df['year'].astype(int) 
         df['month'] = df['month'].astype(int) 
         df['day'] = df['day'].astype(int) 
         # filter predictions greater than 2010 because QuantConnect only provides
         # options data as far back as 2010
         df = df[df['year'] >= 2010]
-        df = df.drop(columns=['date','prediction'])
+        df = df.drop(columns=['date','prediction','expected','equal','correctbuysignal'])
         buyArray = df.to_numpy() # convert to array
         
         # Dates below are adjusted to match imported dates from NN
