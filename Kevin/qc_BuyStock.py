@@ -8,6 +8,10 @@ import io # converting data to csv
 import requests # importing data from URL
 
 class SmoothYellowFly(QCAlgorithm):
+    # Order ticket for our stop order, Datetime when stop order was last hit
+    newHigh = 0 # track underlying equity price
+    stopPrice = 0    # for moving stop loss
+
     def Initialize(self):
         # NOTE: QuantConnect provides equity options data from AlgoSeek going back as far as 2010.
         # The options data is available only in minute resolution, which means we need to consolidate
@@ -45,12 +49,17 @@ class SmoothYellowFly(QCAlgorithm):
         self.buyOptionSignal = 0
         self.buyNumOfContracts = 0
         self.portfolioRisk = .05
+        self.stopLossPercentage = .025 
         
         # iterate through the predictions and schedule a buy event
         for x in buyArray:
             self.Schedule.On(self.DateRules.On(x[1], x[2], x[3]), \
                             self.TimeRules.At(9,35), \
                             self.BuySignal)
+
+        self.Schedule.On(self.DateRules.EveryDay(self.stockSymbol), \
+                 self.TimeRules.BeforeMarketClose(self.stockSymbol, 5), \
+                 self.EveryDayBeforeMarketClose)
 
     def OnData(self, data):
         ''' OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
@@ -64,16 +73,32 @@ class SmoothYellowFly(QCAlgorithm):
             self.ticket = self.MarketOrder(self.stockSymbol, self.buyNumOfContracts)
             self.ticketList.append(self.ticket)
             self.buyOptionSignal = 0
-        
-        # Check if we're not invested      
-        if self.ticketList:
-            for i in self.ticketList:
-                if self.UtcTime >= (i.Time + timedelta(days=3)): 
-                    # Exit position
-                    self.Liquidate(i.Symbol, "Liquidate: Ticket >= 3 Days")
-                    self.ticketList.remove(i)
     
     # Sets 'Buy' Indicator to 1
     def BuySignal(self):
         self.Log("BuySignal: Fired at : {0}".format(self.Time))
         self.buyOptionSignal = 1
+
+    def EveryDayBeforeMarketClose(self):
+            if self.ticketList:
+                for i in self.ticketList:
+                    if self.UtcTime >= (i.Time + timedelta(days=3)): 
+                        # Exit position
+                        self.Liquidate(i.Symbol, "Liquidate: Ticket >= 3 Days")
+                        self.ticketList.remove(i)
+                    ### Dictionary will create KVP between contracts and highest contract prices
+                    elif self.equity.price > self.newHigh:
+                        self.Log("New High")
+                        # Save the new high to highestContractPrice; then update the stop price 
+                        self.newHigh = self.equity.price
+                        # Print the new stop price with Debug()
+                        #self.Log(self.stockSymbol + "- NewHigh: " + str(self.contractDictionary[i]) + \
+                        #            " Stop: " + str(round((self.contractDictionary[i] * (1-self.stopLossPercentage)),2)))
+                    elif self.equity.price <= round((self.newHigh * (1-self.stopLossPercentage)),2):
+                        self.Liquidate(i.Symbol, "Liquidate: Stop Loss")
+                        self.Log("Stop Loss Hit")
+                        self.newHigh = 0
+                        #del self.contractDictionary[i]
+                        self.ticketList.remove(i)
+            else:
+                return

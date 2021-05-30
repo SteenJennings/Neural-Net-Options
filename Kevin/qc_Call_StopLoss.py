@@ -29,23 +29,21 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
     
     def Initialize(self):
         # Download NN Buy Signals from Github Raw CSV
-        self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/QuantCSV/AAPL_pred_2021-05-28.csv"
-        #self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/QuantCSV/AMZN_pred_2021-05-28%20(1).csv"
-        #self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/QuantCSV/TQQQ_pred_2021-05-28.csv"
+        self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/Final_NN_Output/AMZN_pred_2021-05-30.csv"
         
         # modify dataframes
         df = pd.read_csv(io.StringIO(self.Download(self.url)))
         # split date column to three different columns for year, month and day 
         df[['year','month','day']] = df['date'].str.split("-", expand = True) 
         df.columns = df.columns.str.lower()
-        df = df[df['prediction'] == 1]  # filter predictions
+        df = df[df['expected'] == 1]  # filter predictions
         df['year'] = df['year'].astype(int) 
         df['month'] = df['month'].astype(int) 
         df['day'] = df['day'].astype(int) 
         # filter predictions greater than 2010 because QuantConnect only provides
         # options data as far back as 2010
         df = df[df['year'] >= 2010]
-        df = df.drop(columns=['date','prediction'])
+        df = df.drop(columns=['date','prediction','expected','equal','correctbuysignal'])
         buyArray = df.to_numpy() # convert to array
         
         # NOTE: QuantConnect provides equity options data from AlgoSeek going back as far as 2010.
@@ -68,11 +66,11 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
         self.contract = str()
         self.buyOptions = 0 # buy signal
         self.DaysBeforeExp = 3 # close the options this many days before expiration
-        self.OTM = 0.025 # target contract OTM %
-        self.MinDTE = 180 # contract minimum DTE
-        self.MaxDTE = 240 # contract maximum DTE
+        self.OTM = 0.10 # target contract OTM %
+        self.MinDTE = 25 # contract minimum DTE
+        self.MaxDTE = 35 # contract maximum DTE
         self.contractAmounts = 1 # number of contracts to purchase
-        self.portfolioRisk = 0.1 # percentage of portfolio to be used for purchases
+        self.portfolioRisk = 0.05 # percentage of portfolio to be used for purchases
         self.stopLossPercentage = .025 
         
         # Next step is to iterate through the predictions and schedule a buy event
@@ -94,7 +92,7 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
         # set our strike/expiry filter for this option chain
         self.option.SetFilter(0, otmContractLimit, timedelta(self.MinDTE), timedelta(self.MaxDTE))
         
-        if self.Portfolio.Cash > 30000 and self.buyOptions == 1:
+        if self.Portfolio.Cash > 10000 and self.buyOptions == 1:
             self.BuyCall(slice)
         
         # if self.contractList:
@@ -175,6 +173,7 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
                 key = lambda x: x.Right)
             
             if len(contracts) == 0: continue
+            if contracts[0].AskPrice == 0: continue
             self.contract = contracts[0]
 
         # if found, trade it
