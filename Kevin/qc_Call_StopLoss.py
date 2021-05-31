@@ -42,7 +42,9 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
     
     def Initialize(self):
         # Download NN Buy Signals from Github Raw CSV
-        self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/Final_NN_Output/DIS_pred_2021-05-30.csv"
+        #self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/QuantCSV/TQQQ_3pct1day_pred_2021-05-31.csv"
+        #self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/Final_NN_Output/TQQQ_pred_2021-05-30.csv"
+        self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/Final_NN_Output/TSLA_pred_2021-05-30.csv"
         
         # modify dataframes
         df = pd.read_csv(io.StringIO(self.Download(self.url)))
@@ -84,7 +86,7 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
         self.MaxDTE = 35 # contract maximum DTE
         self.contractAmounts = 1 # number of contracts to purchase
         self.portfolioRisk = 0.05 # percentage of portfolio to be used for purchases
-        self.stopLossPercentage = .025 
+        self.stopLossPercentage = .015 
         
         # Next step is to iterate through the predictions and schedule a buy event
         for x in buyArray:
@@ -117,8 +119,9 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
                     #del self.contractDictionary[i]
                 
                 elif self.Securities[i.Symbol].AskPrice > self.contractDictionary[i]:
-                    self.Log("Contract AskPrice is higher")
-                    # Save the new high to highestContractPrice; then update the stop price 
+                    self.Log("Contract AskPrice is higher, update stop loss")
+                    # Save the new high to highestContractPrice; then update the stop price
+                    self.stopLossPercentage = self.stopLossPercentage * 2
                     self.contractDictionary[i] = self.Securities[i.Symbol].AskPrice
                     self.Log(self.stockSymbol + "- NewHigh: " + str(self.contractDictionary[i]) + \
                                " Stop: " + str(round((self.contractDictionary[i] * (1-self.stopLossPercentage)),2)))
@@ -127,6 +130,7 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
                     self.Log("Stop Loss Hit")
                     #del self.contractDictionary[i]
                     self.contractList.remove(i)
+                    self.stopLossPercentage = .015
             else:
                 return
 
