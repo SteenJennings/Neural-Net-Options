@@ -1,7 +1,24 @@
-# In this algorithm, we are importing a list of 'buy' dates from a github csv.
-# We will purchase call options on these dates and sell them with a trailing stop-limit.
-# Resources - https://www.quantconnect.com/forum/discussion/9482/simple-example-long-put-hedge/p1?ref=towm
-# Resources - https://www.quantconnect.com/tutorials/introduction-to-options/quantconnect-options-api#QuantConnect-Options-API-Algorithm
+############################################################################################################################### 
+#
+# FileName: qc_Call_StopLoss.py
+# Date: 5/25/2021
+# Class: Capstone
+# Description:  This code loads predictions from a CSV and schedules buy dates for each.  
+#               The algorithm will purchase Call Options based on criteria such as % OTM, Min and Max DTE,
+#               portfolio risk profile, etc.  After a contract is purchased, the algorithm closes (sells)  
+#               the contract based on the risk criteria, which in this case is a combination of selling
+#               X number of days before expiration or utilizing a tight trailing stop loss on the contract AskPrice.  
+#
+# Resources: Some code was taken from QuantConnect BootCamps, Documents, Tutorials and Forums. See Below:
+#   https://www.quantconnect.com/forum/discussion/9482/simple-example-long-put-hedge/p1?ref=towm
+#   https://www.quantconnect.com/tutorials/introduction-to-options/quantconnect-options-api#QuantConnect-Options-API-Algorithm
+#   https://www.quantconnect.com/docs/algorithm-reference/handling-data
+#   https://www.quantconnect.com/tutorials/applied-options/iron-condor
+#   https://www.quantconnect.com/learning/course/1/boot-camp-101-us-equities
+#   https://www.quantconnect.com/docs/algorithm-reference/scheduled-events
+#
+###############################################################################################################################
+
 
 from clr import AddReference
 AddReference("System")
@@ -19,24 +36,20 @@ from QuantConnect.Data.Custom.CBOE import * # get pricing data
 
 class BasicTemplateOptionsAlgorithm(QCAlgorithm):
     
-    # Order ticket for our stop order, Datetime when stop order was last hit
-    stopMarketTicketDictionary = {} # KVP to track stopMarketTickets for each contract
-    stopMarketFillTime = datetime.min
     contractDictionary = {} # KVP to be used for trailing stop loss - track AskPrice highs
     contractList = []
     askPriceHigh = 0 # track underlying equity price
-    stopPrice = 0    # for moving stop loss
     
     def Initialize(self):
         # Download NN Buy Signals from Github Raw CSV
-        self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/Final_NN_Output/AMZN_pred_2021-05-30.csv"
+        self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/Final_NN_Output/DIS_pred_2021-05-30.csv"
         
         # modify dataframes
         df = pd.read_csv(io.StringIO(self.Download(self.url)))
         # split date column to three different columns for year, month and day 
         df[['year','month','day']] = df['date'].str.split("-", expand = True) 
         df.columns = df.columns.str.lower()
-        df = df[df['expected'] == 1]  # filter predictions
+        df = df[df['prediction'] == 1]  # filter predictions
         df['year'] = df['year'].astype(int) 
         df['month'] = df['month'].astype(int) 
         df['day'] = df['day'].astype(int) 
@@ -86,7 +99,6 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
 
     def OnData(self,slice):
         # OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
-        
         otmContractLimit = int(self.equity.Price * self.OTM)
 
         # set our strike/expiry filter for this option chain
@@ -94,36 +106,6 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
         
         if self.Portfolio.Cash > 10000 and self.buyOptions == 1:
             self.BuyCall(slice)
-        
-        # if self.contractList:
-        #     if self.Time.hour == 3 and self.Time.minute == 45:
-        #         for i in self.contractList:
-        #             if(i.Symbol.ID.Date - self.Time) <= timedelta(self.DaysBeforeExp):
-        #                 self.Liquidate(i.Symbol, "Liquidate: Close to Expiration")
-        #                 self.Log("Closed: too close to expiration")
-        #                 self.contractList.remove(i)
-        #                 #del self.contractDictionary[i]
-                    
-        #             ### I need to implement a Dictionary to be called in this function and BuyCall
-        #             ### Dictionary will create KVP between contracts and highest contract prices
-        #             elif self.Securities[i.Symbol].AskPrice > self.contractDictionary[i]:
-        #                 self.Log("Contract AskPrice is higher")
-        #                 # Save the new high to highestContractPrice; then update the stop price 
-        #                 self.contractDictionary[i] = self.Securities[i.Symbol].AskPrice
-        #                 # updateFields = UpdateOrderFields()
-        #                 # updateFields.StopPrice = round((self.contractDictionary[i] * (1-self.stopLossPercentage)),2)
-        #                 #self.stopMarketTicket.Update(updateFields)
-        #                 # self.stopMarketTicketDictionary[i].Update(updateFields)
-        #                 # Print the new stop price with Debug()
-        #                 self.Log(self.stockSymbol + "- NewHigh: " + str(self.contractDictionary[i]) + \
-        #                             " Stop: " + str(round((self.contractDictionary[i] * (1-self.stopLossPercentage)),2)))
-        #             elif self.Securities[i.Symbol].AskPrice <= round((self.contractDictionary[i] * (1-self.stopLossPercentage)),2):
-        #                 self.Liquidate(i.Symbol, "Liquidate: Stop Loss")
-        #                 self.Log("Stop Loss Hit")
-        #                 #del self.contractDictionary[i]
-        #                 self.contractList.remove(i)
-        #     else:
-        #         return
 
     def EveryDayBeforeMarketClose(self):
         if self.contractList:
@@ -134,19 +116,12 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
                     self.contractList.remove(i)
                     #del self.contractDictionary[i]
                 
-                ### I need to implement a Dictionary to be called in this function and BuyCall
-                ### Dictionary will create KVP between contracts and highest contract prices
                 elif self.Securities[i.Symbol].AskPrice > self.contractDictionary[i]:
                     self.Log("Contract AskPrice is higher")
                     # Save the new high to highestContractPrice; then update the stop price 
                     self.contractDictionary[i] = self.Securities[i.Symbol].AskPrice
-                    # updateFields = UpdateOrderFields()
-                    # updateFields.StopPrice = round((self.contractDictionary[i] * (1-self.stopLossPercentage)),2)
-                    #self.stopMarketTicket.Update(updateFields)
-                    # self.stopMarketTicketDictionary[i].Update(updateFields)
-                    # Print the new stop price with Debug()
-                    #self.Log(self.stockSymbol + "- NewHigh: " + str(self.contractDictionary[i]) + \
-                    #            " Stop: " + str(round((self.contractDictionary[i] * (1-self.stopLossPercentage)),2)))
+                    self.Log(self.stockSymbol + "- NewHigh: " + str(self.contractDictionary[i]) + \
+                               " Stop: " + str(round((self.contractDictionary[i] * (1-self.stopLossPercentage)),2)))
                 elif self.Securities[i.Symbol].AskPrice <= round((self.contractDictionary[i] * (1-self.stopLossPercentage)),2):
                     self.Liquidate(i.Symbol, "Liquidate: Stop Loss")
                     self.Log("Stop Loss Hit")
@@ -182,20 +157,9 @@ class BasicTemplateOptionsAlgorithm(QCAlgorithm):
             if self.contractAmounts < 1:
                 self.contractAmounts = 1
             self.contractDictionary[self.contract] = self.MarketOrder(self.contract.Symbol, self.contractAmounts).AverageFillPrice
-            # self.stopMarketTicket = self.StopMarketOrder(self.contract.Symbol, \
-            #                         -self.contractAmounts, round((0.75 * self.contract.AskPrice),2))
-            # self.stopMarketTicketDictionary[self.contract]=self.stopMarketTicket
-            #self.contractDictionary[self.contract]=self.contract.AskPrice
             self.contractList.append(self.contract)
             self.buyOptions = 0
             self.contract = str()
-            #self.MarketOnCloseOrder(symbol, -1)
 
     def OnOrderEvent(self, orderEvent):
         self.Log(str(orderEvent))
-        
-        # Check if we hit our stop loss (Compare the orderEvent.Id with the stopMarketTicket.OrderId)
-        # It's important to first check if the ticket isn't null (i.e. making sure it has been submitted)
-        #if self.stopMarketTicket is not None and self.stopMarketTicket.OrderId == orderEvent.OrderId:
-            # Store datetime
-            #self.stopMarketFillTime = self.Time
