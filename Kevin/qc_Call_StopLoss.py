@@ -36,14 +36,14 @@ class NeuralNetworkTrailingStopLoss(QCAlgorithm):
     def Initialize(self):
         # Download NN Buy Signals/Predictions from Github Raw CSV - these will 
         # provide dates for us to purchase call options
-        self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/Final_NN_Output/TSLA_pred_2021-05-31.csv"
+        self.url = "https://raw.githubusercontent.com/SteenJennings/Neural-Net-Options/master/Kevin/Final_NN_Output/TSLA_pred_2021-05-30.csv"
         
         # modify dataframes
         df = pd.read_csv(io.StringIO(self.Download(self.url)))
         # split date column to three different columns for year, month and day 
         df[['year','month','day']] = df['date'].str.split("-", expand = True) 
         df.columns = df.columns.str.lower()
-        df = df[df['correctbuysignal'] == 1]  # filter rows with predictions
+        df = df[df['prediction'] == 1]  # filter rows with predictions
         df['year'] = df['year'].astype(int) 
         df['month'] = df['month'].astype(int) 
         df['day'] = df['day'].astype(int) 
@@ -104,7 +104,7 @@ class NeuralNetworkTrailingStopLoss(QCAlgorithm):
         #                       closest contract date, furthest contract date)
         self.option.SetFilter(0, otmContractLimit, timedelta(self.MinDTE), timedelta(self.MaxDTE))
         
-        if self.minPortfolioBalance > self.portfolioStopLimit and self.buyOptions == 1:
+        if self.Portfolio.Cash > self.minPortfolioBalance and self.buyOptions == 1:
             self.BuyCall(slice)
     
     # Checks contract expiration dates and Stop Loss every day before the market closes
